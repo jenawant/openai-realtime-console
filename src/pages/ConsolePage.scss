@@ -39,7 +39,7 @@
     margin: 0px 16px;
     display: flex;
     overflow: hidden;
-    margin-bottom: 24px;
+    //margin-bottom: 24px;
     .content-block {
       position: relative;
       display: flex;
@@ -68,7 +68,8 @@
     .content-right {
       width: 300px;
       flex-shrink: 0;
-      display: flex;
+      //display: flex;
+      display: none;
       flex-direction: column;
       margin-left: 24px;
       gap: 24px;
@@ -126,21 +127,24 @@
         align-items: center;
         justify-content: center;
         gap: 16px;
+        border-top: 1px solid #e7e7e7;
+        padding: 16px 0;
       }
       & > div.events {
         overflow: hidden;
       }
       .events {
+        height: 150px;
+        min-height: 100px;
+        max-height: 150px;
         border-top: 1px solid #e7e7e7;
       }
       .conversation {
         display: flex;
-        flex-shrink: 0;
+        //flex-shrink: 0;
         width: 100%;
         overflow: hidden;
-        height: 200px;
-        min-height: 0;
-        max-height: 200px;
+
         border-top: 1px solid #e7e7e7;
       }
     }
@@ -191,6 +195,11 @@
       color: #18181b;
       overflow: hidden;
       word-wrap: break-word;
+      audio{
+        height: 24px;
+        width: 260px;
+        margin-block-start: 8px;
+      }
     }
   }
 

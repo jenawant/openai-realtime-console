@@ -15,6 +15,8 @@ export class RealtimeRelay {
   }
 
   async connectionHandler(ws, req) {
+    this.log(req.url)
+    this.log(req.headers)
     if (!req.url) {
       this.log('No URL provided, closing connection.');
       ws.close();
@@ -31,7 +33,7 @@ export class RealtimeRelay {
     }
 
     // Instantiate new client
-    this.log(`Connecting with key "${this.apiKey.slice(0, 3)}..."`);
+    this.log(`Connecting with key "${this.apiKey}..."`);
     const client = new RealtimeClient({ apiKey: this.apiKey });
 
     // Relay: OpenAI Realtime API Event -> Browser Event

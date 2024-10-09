@@ -11,21 +11,20 @@
 const LOCAL_RELAY_SERVER_URL: string =
   process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { RealtimeClient } from '@openai/realtime-api-beta';
 import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
-import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
+import { WavRecorder, WavStreamPlayer } from '../lib/wavtools';
 import { instructions } from '../utils/conversation_config.js';
 import { WavRenderer } from '../utils/wav_renderer';
 
-import { X, Edit, Zap, ArrowUp, ArrowDown } from 'react-feather';
+import { ArrowDown, ArrowUp, Edit, X, Zap } from 'react-feather';
 import { Button } from '../components/button/Button';
 import { Toggle } from '../components/toggle/Toggle';
 import { Map } from '../components/Map';
 
 import './ConsolePage.scss';
-import { isJsxOpeningLikeElement } from 'typescript';
 
 /**
  * Type for result from get_weather() function call
@@ -160,7 +159,7 @@ export function ConsolePage() {
 
   /**
    * Connect to conversation:
-   * WavRecorder taks speech input, WavStreamPlayer output, client is API client
+   * WavRecorder takes speech input, WavStreamPlayer output, client is API client
    */
   const connectConversation = useCallback(async () => {
     const client = clientRef.current;
@@ -482,12 +481,11 @@ export function ConsolePage() {
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
       if (item.status === 'completed' && item.formatted.audio?.length) {
-        const wavFile = await WavRecorder.decode(
+        item.formatted.file = await WavRecorder.decode(
           item.formatted.audio,
           24000,
           24000
         );
-        item.formatted.file = wavFile;
       }
       setItems(items);
     });
@@ -507,8 +505,8 @@ export function ConsolePage() {
     <div data-component="ConsolePage">
       <div className="content-top">
         <div className="content-title">
-          <img src="/openai-logomark.svg" />
-          <span>realtime console</span>
+          <img src="/icon.svg" alt={"wonder byte logo"} />
+          <span>Wonder Byte Realtime</span>
         </div>
         <div className="content-api-key">
           {!LOCAL_RELAY_SERVER_URL && (
