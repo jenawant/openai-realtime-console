@@ -4,7 +4,7 @@ import './Button.scss';
 import { Icon } from 'react-feather';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  label?: string;
+  label?: any;
   icon?: Icon;
   iconPosition?: 'start' | 'end';
   iconColor?: 'red' | 'green' | 'grey';
@@ -13,14 +13,14 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  label = 'Okay',
-  icon = void 0,
-  iconPosition = 'start',
-  iconColor = void 0,
-  iconFill = false,
-  buttonStyle = 'regular',
-  ...rest
-}: ButtonProps) {
+                         label = 'Okay',
+                         icon = void 0,
+                         iconPosition = 'start',
+                         iconColor = void 0,
+                         iconFill = false,
+                         buttonStyle = 'regular',
+                         ...rest
+                       }: ButtonProps) {
   const StartIcon = iconPosition === 'start' ? icon : null;
   const EndIcon = iconPosition === 'end' ? icon : null;
   const classList = [];
@@ -33,15 +33,15 @@ export function Button({
   classList.push(`button-style-${buttonStyle}`);
 
   return (
-    <button data-component="Button" className={classList.join(' ')} {...rest}>
+    <button data-component='Button' className={classList.join(' ')} {...rest}>
       {StartIcon && (
-        <span className="icon icon-start">
+        <span className='icon icon-start'>
           <StartIcon />
         </span>
       )}
-      <span className="label">{label}</span>
+      {label && (<span className='label'>{label}</span>)}
       {EndIcon && (
-        <span className="icon icon-end">
+        <span className='icon icon-end'>
           <EndIcon />
         </span>
       )}

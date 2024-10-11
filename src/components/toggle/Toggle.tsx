@@ -6,11 +6,13 @@ export function Toggle({
   defaultValue = false,
   values,
   labels,
+  tips,
   onChange = () => {},
 }: {
   defaultValue?: string | boolean;
   values?: string[];
-  labels?: string[];
+  labels?: any[];
+  tips?: string[]
   onChange?: (isEnabled: boolean, value: string) => void;
 }) {
   if (typeof defaultValue === 'string') {
@@ -51,12 +53,12 @@ export function Toggle({
       data-enabled={value.toString()}
     >
       {labels && (
-        <div className="label left" ref={leftRef}>
+        <div className="label left" ref={leftRef} title={tips && tips[0]}>
           {labels[0]}
         </div>
       )}
       {labels && (
-        <div className="label right" ref={rightRef}>
+        <div className="label right" ref={rightRef} title={tips && tips[1]}>
           {labels[1]}
         </div>
       )}

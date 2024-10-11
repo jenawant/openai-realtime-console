@@ -9,7 +9,8 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <App />
+    <App username={document.getElementById('root')?.dataset['username']}
+         logoutUrl={document.getElementById('root')?.dataset['logoutUrl']} />
   </React.StrictMode>
 );
 

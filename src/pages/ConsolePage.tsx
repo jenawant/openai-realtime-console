@@ -1,3 +1,5 @@
+import { Exception } from 'sass';
+
 /**
  * Running a local relay server will allow you to hide your API key
  * and run custom logic on the server
@@ -11,6 +13,10 @@
 const LOCAL_RELAY_SERVER_URL: string =
   process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
 
+const FETCH_TOOLS_HOST: string = process.env.REACT_APP_TOOLS_HOST || '';
+const FETCH_TOOLS_AUTH_USERNAME: string = process.env.REACT_APP_AUTH_USERNAME || '';
+const FETCH_TOOLS_AUTH_PASSWORD: string = process.env.REACT_APP_AUTH_PASSWORD || '';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { RealtimeClient } from '@openai/realtime-api-beta';
@@ -18,11 +24,11 @@ import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { WavRecorder, WavStreamPlayer } from '../lib/wavtools';
 import { instructions } from '../utils/conversation_config.js';
 import { WavRenderer } from '../utils/wav_renderer';
+import CryptoJS from 'crypto-js';
 
-import { ArrowDown, ArrowUp, Edit, X, Zap } from 'react-feather';
+import { ArrowDown, ArrowUp, LogOut, X, Zap, ZapOff, Mic, Activity } from 'react-feather';
 import { Button } from '../components/button/Button';
 import { Toggle } from '../components/toggle/Toggle';
-import { Map } from '../components/Map';
 
 import './ConsolePage.scss';
 
@@ -53,7 +59,8 @@ interface RealtimeEvent {
   event: { [key: string]: any };
 }
 
-export function ConsolePage() {
+
+export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
   /**
    * Ask user for API Key
    * If we're using the local relay server, we don't need this
@@ -61,8 +68,8 @@ export function ConsolePage() {
   const apiKey = LOCAL_RELAY_SERVER_URL
     ? ''
     : localStorage.getItem('tmp::voice_api_key') ||
-      prompt('OpenAI API Key') ||
-      '';
+    prompt('OpenAI API Key') ||
+    '';
   if (apiKey !== '') {
     localStorage.setItem('tmp::voice_api_key', apiKey);
   }
@@ -84,9 +91,9 @@ export function ConsolePage() {
       LOCAL_RELAY_SERVER_URL
         ? { url: LOCAL_RELAY_SERVER_URL }
         : {
-            apiKey: apiKey,
-            dangerouslyAllowAPIKeyInBrowser: true,
-          }
+          apiKey: apiKey,
+          dangerouslyAllowAPIKeyInBrowser: true
+        }
     )
   );
 
@@ -117,12 +124,6 @@ export function ConsolePage() {
   const [isConnected, setIsConnected] = useState(false);
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
-  const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
-  const [coords, setCoords] = useState<Coordinates | null>({
-    lat: 37.775593,
-    lng: -122.418137,
-  });
-  const [marker, setMarker] = useState<Coordinates | null>(null);
 
   /**
    * Utility for formatting the timing of logs
@@ -143,6 +144,13 @@ export function ConsolePage() {
       return s;
     };
     return `${pad(m)}:${pad(s)}.${pad(hs)}`;
+  }, []);
+
+  /**
+   * Utility for create base64 encode data
+   */
+  const b64encode = useCallback((data: any) => {
+    return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(data));
   }, []);
 
   /**
@@ -180,13 +188,15 @@ export function ConsolePage() {
 
     // Connect to realtime API
     await client.connect();
-    client.sendUserMessageContent([
-      {
-        type: `input_text`,
-        text: `Hello!`,
-        // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
-      },
-    ]);
+    if (client.conversation.getItems().length == 0) {
+      client.sendUserMessageContent([
+        {
+          type: `input_text`,
+          text: `Hello!`
+          // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
+        }
+      ]);
+    }
 
     if (client.getTurnDetectionType() === 'server_vad') {
       await wavRecorder.record((data) => client.appendInputAudio(data.mono));
@@ -198,14 +208,8 @@ export function ConsolePage() {
    */
   const disconnectConversation = useCallback(async () => {
     setIsConnected(false);
-    setRealtimeEvents([]);
-    setItems([]);
-    setMemoryKv({});
-    setCoords({
-      lat: 37.775593,
-      lng: -122.418137,
-    });
-    setMarker(null);
+    // setRealtimeEvents([]);
+    // setItems([]);
 
     const client = clientRef.current;
     client.disconnect();
@@ -214,7 +218,7 @@ export function ConsolePage() {
     await wavRecorder.end();
 
     const wavStreamPlayer = wavStreamPlayerRef.current;
-    await wavStreamPlayer.interrupt();
+    wavStreamPlayer.interrupt();
   }, []);
 
   const deleteConversationItem = useCallback(async (id: string) => {
@@ -231,12 +235,14 @@ export function ConsolePage() {
     const client = clientRef.current;
     const wavRecorder = wavRecorderRef.current;
     const wavStreamPlayer = wavStreamPlayerRef.current;
-    const trackSampleOffset = await wavStreamPlayer.interrupt();
+    const trackSampleOffset = wavStreamPlayer.interrupt();
     if (trackSampleOffset?.trackId) {
       const { trackId, offset } = trackSampleOffset;
-      await client.cancelResponse(trackId, offset);
+      client.cancelResponse(trackId, offset);
     }
-    await wavRecorder.record((data) => client.appendInputAudio(data.mono));
+    if (wavRecorder.getStatus() != 'recording') {
+      await wavRecorder.record((data) => client.appendInputAudio(data.mono));
+    }
   };
 
   /**
@@ -246,7 +252,9 @@ export function ConsolePage() {
     setIsRecording(false);
     const client = clientRef.current;
     const wavRecorder = wavRecorderRef.current;
-    await wavRecorder.pause();
+    if (wavRecorder.getStatus() != 'paused') {
+      await wavRecorder.pause();
+    }
     client.createResponse();
   };
 
@@ -260,7 +268,7 @@ export function ConsolePage() {
       await wavRecorder.pause();
     }
     client.updateSession({
-      turn_detection: value === 'none' ? null : { type: 'server_vad' },
+      turn_detection: value === 'none' ? null : { type: 'server_vad' }
     });
     if (value === 'server_vad' && client.isConnected()) {
       await wavRecorder.record((data) => client.appendInputAudio(data.mono));
@@ -383,35 +391,6 @@ export function ConsolePage() {
     // Add tools
     client.addTool(
       {
-        name: 'set_memory',
-        description: 'Saves important data about the user into memory.',
-        parameters: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description:
-                'The key of the memory value. Always use lowercase and underscores, no other characters.',
-            },
-            value: {
-              type: 'string',
-              description: 'Value can be anything represented as a string',
-            },
-          },
-          required: ['key', 'value'],
-        },
-      },
-      async ({ key, value }: { [key: string]: any }) => {
-        setMemoryKv((memoryKv) => {
-          const newKv = { ...memoryKv };
-          newKv[key] = value;
-          return newKv;
-        });
-        return { ok: true };
-      }
-    );
-    client.addTool(
-      {
         name: 'get_weather',
         description:
           'Retrieves the weather for a given lat, lng coordinate pair. Specify a label for the location.',
@@ -420,39 +399,46 @@ export function ConsolePage() {
           properties: {
             lat: {
               type: 'number',
-              description: 'Latitude',
+              description: 'Latitude'
             },
             lng: {
               type: 'number',
-              description: 'Longitude',
+              description: 'Longitude'
             },
             location: {
               type: 'string',
-              description: 'Name of the location',
-            },
+              description: 'Name of the location'
+            }
           },
-          required: ['lat', 'lng', 'location'],
-        },
+          required: ['lat', 'lng', 'location']
+        }
       },
       async ({ lat, lng, location }: { [key: string]: any }) => {
-        setMarker({ lat, lng, location });
-        setCoords({ lat, lng, location });
         const result = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m`
         );
-        const json = await result.json();
-        const temperature = {
-          value: json.current.temperature_2m as number,
-          units: json.current_units.temperature_2m as string,
-        };
-        const wind_speed = {
-          value: json.current.wind_speed_10m as number,
-          units: json.current_units.wind_speed_10m as string,
-        };
-        setMarker({ lat, lng, location, temperature, wind_speed });
-        return json;
+        return await result.json();
       }
     );
+    client.addTool({
+      'name': 'get_copper_price',
+      'description': 'Get the real-time quotes for copper that are traded on exchanges around the world',
+      'parameters': {
+        'type': 'object',
+        'properties': {},
+        'required': []
+      }
+    }, async () => {
+      const result = await fetch(
+        `${FETCH_TOOLS_HOST}/tools/gpts/get_copper_price`,
+        {
+          headers: {
+            'Authorization': 'Basic ' + b64encode(FETCH_TOOLS_AUTH_USERNAME + ':' + FETCH_TOOLS_AUTH_PASSWORD)
+          }
+        }
+      );
+      return await result.json();
+    });
 
     // handle realtime events from client + server for event logging
     client.on('realtime.event', (realtimeEvent: RealtimeEvent) => {
@@ -472,7 +458,7 @@ export function ConsolePage() {
       const trackSampleOffset = await wavStreamPlayer.interrupt();
       if (trackSampleOffset?.trackId) {
         const { trackId, offset } = trackSampleOffset;
-        await client.cancelResponse(trackId, offset);
+        client.cancelResponse(trackId, offset);
       }
     });
     client.on('conversation.updated', async ({ item, delta }: any) => {
@@ -502,37 +488,23 @@ export function ConsolePage() {
    * Render the application
    */
   return (
-    <div data-component="ConsolePage">
-      <div className="content-top">
-        <div className="content-title">
-          <img src="/icon.svg" alt={"wonder byte logo"} />
+    <div data-component='ConsolePage'>
+      <div className='content-top'>
+        <div className='content-title'>
+          <img src='https://realtime.wonderbyte.ai/flaskr/static/icon.svg' alt={'wonder byte logo'} />
           <span>Wonder Byte Realtime</span>
         </div>
-        <div className="content-api-key">
-          {!LOCAL_RELAY_SERVER_URL && (
-            <Button
-              icon={Edit}
-              iconPosition="end"
-              buttonStyle="flush"
-              label={`api key: ${apiKey.slice(0, 3)}...`}
-              onClick={() => resetAPIKey()}
-            />
-          )}
+        <div className='content-api-key'>
+          <span>Hello, {props.username}</span><span className={'spacer'}>|</span><a
+          href={props.logoutUrl}>Logout</a><LogOut />
         </div>
       </div>
-      <div className="content-main">
-        <div className="content-logs">
-          <div className="content-block events">
-            <div className="visualization">
-              <div className="visualization-entry client">
-                <canvas ref={clientCanvasRef} />
-              </div>
-              <div className="visualization-entry server">
-                <canvas ref={serverCanvasRef} />
-              </div>
-            </div>
-            <div className="content-block-title">events</div>
-            <div className="content-block-body" ref={eventsScrollRef}>
+      <div className='content-main'>
+        <div className='content-logs'>
+          <div className='content-block events'>
+
+            <div className='content-block-title'>events</div>
+            <div className='content-block-body' ref={eventsScrollRef}>
               {!realtimeEvents.length && `awaiting connection...`}
               {realtimeEvents.map((realtimeEvent, i) => {
                 const count = realtimeEvent.count;
@@ -543,13 +515,13 @@ export function ConsolePage() {
                   event.delta = `[trimmed: ${event.delta.length} bytes]`;
                 }
                 return (
-                  <div className="event" key={event.event_id}>
-                    <div className="event-timestamp">
+                  <div className='event' key={event.event_id}>
+                    <div className='event-timestamp'>
                       {formatTime(realtimeEvent.time)}
                     </div>
-                    <div className="event-details">
+                    <div className='event-details'>
                       <div
-                        className="event-summary"
+                        className='event-summary'
                         onClick={() => {
                           // toggle event details
                           const id = event.event_id;
@@ -580,13 +552,13 @@ export function ConsolePage() {
                               : realtimeEvent.source}
                           </span>
                         </div>
-                        <div className="event-type">
+                        <div className='event-type'>
                           {event.type}
                           {count && ` (${count})`}
                         </div>
                       </div>
                       {!!expandedEvents[event.event_id] && (
-                        <div className="event-payload">
+                        <div className='event-payload'>
                           {JSON.stringify(event, null, 2)}
                         </div>
                       )}
@@ -596,57 +568,47 @@ export function ConsolePage() {
               })}
             </div>
           </div>
-          <div className="content-block conversation">
-            <div className="content-block-title">conversation</div>
-            <div className="content-block-body" data-conversation-content>
+          <div className='content-block conversation'>
+            <div className='content-block-title'>conversation</div>
+            <div className='content-block-body' data-conversation-content>
               {!items.length && `awaiting connection...`}
               {items.map((conversationItem, i) => {
                 return (
-                  <div className="conversation-item" key={conversationItem.id}>
-                    <div className={`speaker ${conversationItem.role || ''}`}>
-                      <div>
-                        {(
-                          conversationItem.role || conversationItem.type
-                        ).replaceAll('_', ' ')}
-                      </div>
-                      <div
-                        className="close"
-                        onClick={() =>
-                          deleteConversationItem(conversationItem.id)
-                        }
-                      >
-                        <X />
-                      </div>
+                  <div className='row mb-3 gx-3 align-items-top row-message' key={conversationItem.id} role={conversationItem.role ?? 'function'}>
+                    <div
+                      className='col-md-1 col-xs-12 text-md-center d-flex d-sm-block justify-content-between justify-content-sm-center align-items-center align-items-sm-start'>
+                      {conversationItem.role == 'user' ? <i className='bi bi-person fs-3 fw-bold' style={{color:'#0099ff'}}></i> :
+                        <i className='bi bi-robot fs-3 fw-bold' style={{color:'#009900'}}></i>}
                     </div>
-                    <div className={`speaker-content`}>
+                    <div className='col p-3 bg-light markdown-content rounded'>
                       {/* tool response */}
                       {conversationItem.type === 'function_call_output' && (
-                        <div>{conversationItem.formatted.output}</div>
+                        <p>{conversationItem.formatted.output}</p>
                       )}
                       {/* tool call */}
                       {!!conversationItem.formatted.tool && (
-                        <div>
+                        <p>
                           {conversationItem.formatted.tool.name}(
                           {conversationItem.formatted.tool.arguments})
-                        </div>
+                        </p>
                       )}
                       {!conversationItem.formatted.tool &&
                         conversationItem.role === 'user' && (
-                          <div>
+                          <p>
                             {conversationItem.formatted.transcript ||
                               (conversationItem.formatted.audio?.length
                                 ? '(awaiting transcript)'
                                 : conversationItem.formatted.text ||
-                                  '(item sent)')}
-                          </div>
+                                '(item sent)')}
+                          </p>
                         )}
                       {!conversationItem.formatted.tool &&
                         conversationItem.role === 'assistant' && (
-                          <div>
+                          <p>
                             {conversationItem.formatted.transcript ||
                               conversationItem.formatted.text ||
                               '(truncated)'}
-                          </div>
+                          </p>
                         )}
                       {conversationItem.formatted.file && (
                         <audio
@@ -660,67 +622,45 @@ export function ConsolePage() {
               })}
             </div>
           </div>
-          <div className="content-actions">
+          <div className='content-actions'>
+            <div className='visualization'>
+              <div className='visualization-entry client'>
+                <canvas ref={clientCanvasRef} />
+              </div>
+              <div className='visualization-entry server'>
+                <canvas ref={serverCanvasRef} />
+              </div>
+            </div>
             <Toggle
               defaultValue={false}
-              labels={['manual', 'vad']}
+              labels={[<Mic />, <Activity />]}
               values={['none', 'server_vad']}
+              tips={['Manual', 'Automatic']}
               onChange={(_, value) => changeTurnEndType(value)}
             />
-            <div className="spacer" />
+            <div className='spacer' />
             {isConnected && canPushToTalk && (
               <Button
-                label={isRecording ? 'release to send' : 'push to talk'}
+                title={isRecording ? 'release to send' : 'push to talk'}
+                label={<Mic />}
                 buttonStyle={isRecording ? 'alert' : 'regular'}
                 disabled={!isConnected || !canPushToTalk}
                 onMouseDown={startRecording}
                 onMouseUp={stopRecording}
+                onTouchStart={startRecording}
+                onTouchEnd={stopRecording}
               />
             )}
-            <div className="spacer" />
+            <div className='spacer' />
             <Button
-              label={isConnected ? 'disconnect' : 'connect'}
-              iconPosition={isConnected ? 'end' : 'start'}
-              icon={isConnected ? X : Zap}
+              label={isConnected ? 'stop' : 'start'}
+              iconPosition={isConnected ? 'start' : 'start'}
+              icon={isConnected ? ZapOff : Zap}
               buttonStyle={isConnected ? 'regular' : 'action'}
               onClick={
                 isConnected ? disconnectConversation : connectConversation
               }
             />
-          </div>
-        </div>
-        <div className="content-right">
-          <div className="content-block map">
-            <div className="content-block-title">get_weather()</div>
-            <div className="content-block-title bottom">
-              {marker?.location || 'not yet retrieved'}
-              {!!marker?.temperature && (
-                <>
-                  <br />
-                  🌡️ {marker.temperature.value} {marker.temperature.units}
-                </>
-              )}
-              {!!marker?.wind_speed && (
-                <>
-                  {' '}
-                  🍃 {marker.wind_speed.value} {marker.wind_speed.units}
-                </>
-              )}
-            </div>
-            <div className="content-block-body full">
-              {coords && (
-                <Map
-                  center={[coords.lat, coords.lng]}
-                  location={coords.location}
-                />
-              )}
-            </div>
-          </div>
-          <div className="content-block kv">
-            <div className="content-block-title">set_memory()</div>
-            <div className="content-block-body content-kv">
-              {JSON.stringify(memoryKv, null, 2)}
-            </div>
           </div>
         </div>
       </div>
