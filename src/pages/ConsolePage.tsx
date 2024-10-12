@@ -1,4 +1,18 @@
-import { Exception } from 'sass';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { RealtimeClient } from '@openai/realtime-api-beta';
+import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
+import { WavRecorder, WavStreamPlayer } from '../lib/wavtools';
+import { instructions } from '../utils/conversation_config.js';
+import { WavRenderer } from '../utils/wav_renderer';
+import CryptoJS from 'crypto-js';
+
+import { Activity, ArrowDown, ArrowUp, LogOut, Mic, Zap, ZapOff } from 'react-feather';
+import { Button } from '../components/button/Button';
+import { Toggle } from '../components/toggle/Toggle';
+
+import './ConsolePage.scss';
+import Markdown from 'marked-react';
 
 /**
  * Running a local relay server will allow you to hide your API key
@@ -16,21 +30,6 @@ const LOCAL_RELAY_SERVER_URL: string =
 const FETCH_TOOLS_HOST: string = process.env.REACT_APP_TOOLS_HOST || '';
 const FETCH_TOOLS_AUTH_USERNAME: string = process.env.REACT_APP_AUTH_USERNAME || '';
 const FETCH_TOOLS_AUTH_PASSWORD: string = process.env.REACT_APP_AUTH_PASSWORD || '';
-
-import { useCallback, useEffect, useRef, useState } from 'react';
-
-import { RealtimeClient } from '@openai/realtime-api-beta';
-import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
-import { WavRecorder, WavStreamPlayer } from '../lib/wavtools';
-import { instructions } from '../utils/conversation_config.js';
-import { WavRenderer } from '../utils/wav_renderer';
-import CryptoJS from 'crypto-js';
-
-import { ArrowDown, ArrowUp, LogOut, X, Zap, ZapOff, Mic, Activity } from 'react-feather';
-import { Button } from '../components/button/Button';
-import { Toggle } from '../components/toggle/Toggle';
-
-import './ConsolePage.scss';
 
 /**
  * Type for result from get_weather() function call
@@ -56,11 +55,16 @@ interface RealtimeEvent {
   time: string;
   source: 'client' | 'server';
   count?: number;
-  event: { [key: string]: any };
+  event: {
+    [key: string]: any
+  };
 }
 
 
-export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
+export function ConsolePage(props: {
+  username?: string;
+  logoutUrl?: string;
+}) {
   /**
    * Ask user for API Key
    * If we're using the local relay server, we don't need this
@@ -224,6 +228,19 @@ export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
   const deleteConversationItem = useCallback(async (id: string) => {
     const client = clientRef.current;
     client.deleteItem(id);
+  }, []);
+
+  /**
+   * Get the function output
+   */
+  const fetchToolsOutput = useCallback(async (func: string, argument: Record<string, string> | undefined = undefined) => {
+    const result = await fetch(`${FETCH_TOOLS_HOST}/tools/gpts/${func}?` + (new URLSearchParams(argument).toString()), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(FETCH_TOOLS_AUTH_USERNAME + ':' + FETCH_TOOLS_AUTH_PASSWORD))
+      }
+    });
+    return await result.json();
   }, []);
 
   /**
@@ -391,33 +408,29 @@ export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
     // Add tools
     client.addTool(
       {
-        name: 'get_weather',
-        description:
-          'Retrieves the weather for a given lat, lng coordinate pair. Specify a label for the location.',
-        parameters: {
-          type: 'object',
-          properties: {
-            lat: {
-              type: 'number',
-              description: 'Latitude'
+        'name': 'get_weather',
+        'description': 'Get weather current and forecast report by the provide city name',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'city_name': {
+              'type': 'string',
+              'description': 'The city name, like Beijing, New york'
             },
-            lng: {
-              type: 'number',
-              description: 'Longitude'
-            },
-            location: {
-              type: 'string',
-              description: 'Name of the location'
+            'days': {
+              'type': 'integer',
+              'description': 'Number of days of weather forecast. Value ranges from 1 to 3, default value is 1.'
             }
           },
-          required: ['lat', 'lng', 'location']
+          'required': [
+            'city_name'
+          ]
         }
       },
-      async ({ lat, lng, location }: { [key: string]: any }) => {
-        const result = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m`
-        );
-        return await result.json();
+      async ({ city_name, days = 3 }: {
+        [key: string]: any
+      }) => {
+        return await fetchToolsOutput('get_weather', { city_name, days });
       }
     );
     client.addTool({
@@ -429,15 +442,516 @@ export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
         'required': []
       }
     }, async () => {
-      const result = await fetch(
-        `${FETCH_TOOLS_HOST}/tools/gpts/get_copper_price`,
-        {
-          headers: {
-            'Authorization': 'Basic ' + b64encode(FETCH_TOOLS_AUTH_USERNAME + ':' + FETCH_TOOLS_AUTH_PASSWORD)
+      return await fetchToolsOutput('get_copper_price');
+    });
+    client.addTool({
+      'name': 'get_aluminum_price',
+      'description': 'Get the real-time quotes for aluminum that are traded on exchanges around the world',
+      'parameters': {
+        'type': 'object',
+        'properties': {},
+        'required': []
+      }
+    }, async () => {
+      return await fetchToolsOutput('get_aluminum_price');
+    });
+    client.addTool({
+      'name': 'get_stock_price',
+      'description': 'Get the latest bid and ask prices for a stock, as well as the volume and last trade price in real time.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
           }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_stock_price', { symbol });
+    });
+    client.addTool({
+      'name': 'get_foreign_exchange_price',
+      'description': 'Get the latest bid and ask prices for a currency pair',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'currency_pair': {
+            'type': 'string',
+            'description': 'The currency pair, like USDAUD means USD and AUD'
+          }
+        },
+        'required': [
+          'currency_pair'
+        ]
+      }
+    }, async ({ currency_pair }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_foreign_exchange_price', { currency_pair });
+    });
+    client.addTool({
+      'name': 'get_discounted_cash_flow',
+      'description': 'Calculate the DCF valuation for a company with advanced features like modeling multiple scenarios and using different valuation methods.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
+          }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_discounted_cash_flow', { symbol });
+    });
+    client.addTool({
+      'name': 'company_search',
+      'description': 'Search over 70,000 symbols by symbol name or company name, including cryptocurrencies, forex, stocks, etf and other financial instruments.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'query': {
+            'type': 'string',
+            'description': 'The symbol name or company name, including cryptocurrencies, forex, stocks, etf and other financial instruments.'
+          }
+        },
+        'required': [
+          'query'
+        ]
+      }
+    }, async ({ query }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('company_search', { query });
+    });
+    client.addTool({
+      'name': 'get_stock_news_sentiments',
+      'description': 'Get an RSS feed of the latest stock news articles with their sentiment analysis, including the headline, snippet, publication URL, ticker symbol, and sentiment score.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'page': {
+            'type': 'number',
+            'description': 'The page number'
+          }
+        },
+        'required': []
+      }
+    }, async ({ page = 1 }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_stock_news_sentiments', { page });
+    });
+    client.addTool({
+      'name': 'get_foreign_exchange_news',
+      'description': 'Get a list of the latest forex news articles from a variety of sources, including the headline, snippet, and publication URL.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'page': {
+            'type': 'number',
+            'description': 'The page number'
+          },
+          'symbol': {
+            'type': 'string',
+            'description': 'The currency pair, like USDAUD means USD and AUD'
+          }
+        },
+        'required': []
+      }
+    }, async ({ page = 1, symbol = '' }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_foreign_exchange_news', { page, symbol });
+    });
+    client.addTool({
+      'name': 'get_company_key_metrics',
+      'description': 'Get key financial metrics for a company, including revenue, net income, and price-to-earnings ratio (P/E ratio). Assess a company\'s financial performance and compare it to its competitors.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
+          },
+          'period': {
+            'type': 'string',
+            'description': 'Like annual, quarter'
+          },
+          'limit': {
+            'type': 'number',
+            'description': 'The limit number'
+          }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol = '', period = '', limit = undefined }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_company_key_metrics', { symbol, period, limit });
+    });
+    client.addTool({
+      'name': 'get_company_financial_ratios',
+      'description': 'Get financial ratios for a company, such as the P/B ratio and the ROE. Assess a company\'s financial health and compare it to its competitors.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
+          },
+          'period': {
+            'type': 'string',
+            'description': 'Like annual, quarter'
+          },
+          'limit': {
+            'type': 'number',
+            'description': 'The limit number'
+          }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol, period = '', limit = undefined }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_company_financial_ratios', { symbol, period, limit });
+    });
+    client.addTool({
+      'name': 'get_company_cashflow_growth',
+      'description': 'Get the cash flow growth rate for a company. Measure how quickly a company\'s cash flow is growing.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
+          },
+          'period': {
+            'type': 'string',
+            'description': 'Like annual, quarter'
+          },
+          'limit': {
+            'type': 'number',
+            'description': 'The limit number'
+          }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol, period = '', limit = undefined }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_company_cashflow_growth', { symbol, period, limit });
+    });
+    client.addTool({
+      'name': 'get_company_financial_score',
+      'description': 'Get a financial score for a company, which is a measure of its overall financial health.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
+          }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_company_financial_score', { symbol });
+    });
+    client.addTool({
+      'name': 'get_company_rating',
+      'description': 'The FMP Company Rating endpoint provides a rating of a company based on its financial statements, discounted cash flow analysis, financial ratios, and intrinsic value. Investors can use this rating to get a quick overview of a company\'s financial health and to compare different companies.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'symbol': {
+            'type': 'string',
+            'description': 'The company\'s stock symbol'
+          }
+        },
+        'required': [
+          'symbol'
+        ]
+      }
+    }, async ({ symbol }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_company_rating', { symbol });
+    });
+    client.addTool({
+      'name': 'get_fmp_articles',
+      'description': 'Get a list of the latest articles from Financial Modeling Prep, including the headline, snippet, and publication URL.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'page': {
+            'type': 'number',
+            'description': 'The page number'
+          },
+          'size': {
+            'type': 'number',
+            'description': 'The article size of per page'
+          }
+        },
+        'required': []
+      }
+    }, async () => {
+      return await fetchToolsOutput('get_fmp_articles');
+    });
+    client.addTool({
+      'name': 'get_general_news',
+      'description': 'Get a list of the latest general news articles from a variety of sources, including the headline, snippet, and publication URL.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'page': {
+            'type': 'number',
+            'description': 'The page number'
+          }
+        },
+        'required': []
+      }
+    }, async () => {
+      return await fetchToolsOutput('get_general_news');
+    });
+    client.addTool({
+      'name': 'get_stock_news',
+      'description': 'Get a list of the latest stock news articles from a variety of sources, including the headline, snippet, publication URL, and ticker symbol.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'page': {
+            'type': 'number',
+            'description': 'The page number'
+          },
+          'tickers': {
+            'type': 'string',
+            'description': 'The stock\'s symbol, like AAPL,FB'
+          },
+          'limit': {
+            'type': 'number',
+            'description': 'The limit number'
+          }
+        },
+        'required': []
+      }
+    }, async ({ page = 1, tickers = '', limit = undefined }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_stock_news', { page, tickers, limit });
+    });
+    client.addTool({
+      'name': 'get_crypto_news',
+      'description': 'Get a list of the latest crypto news articles from a variety of sources, including the headline, snippet, and publication URL. (Note: This endpoint requires the symbol in the format of BTCUSD to be passed in as a query parameter.)',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'page': {
+            'type': 'number',
+            'description': 'The page number'
+          },
+          'symbol': {
+            'type': 'string',
+            'description': 'The crypto symbol, format is like BTCUSD'
+          }
+        },
+        'required': []
+      }
+    }, async ({ page = 1, symbol = '' }: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_crypto_news', { page, symbol });
+    });
+    client.addTool({
+      'name': 'create_microsoft_authorization_url',
+      'description': 'Create a Microsoft authorization link. After the user authorizes, the platform can help the user create calendar events, send emails, etc.',
+      'parameters': {
+        'type': 'object',
+        'properties': {},
+        'required': []
+      }
+    }, async () => {
+      return await fetchToolsOutput('create_microsoft_authorization_url');
+    });
+    client.addTool({
+      "name": "get_outlook_calendar_events",
+      "description": "Get a list of event objects in the user's mailbox. The list contains single instance meetings and series masters.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "number_of_month": {
+            "type": "integer",
+            "description": "The number of months to query. For example, 'next two months' represents a number of 2. The default value is 1"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "number_of_month"
+        ]
+      }
+    }, async ({ number_of_month = 3}: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('get_outlook_calendar_events', {number_of_month});
+    });
+    client.addTool({
+      "name": "create_outlook_calendar_event",
+      "description": "Create Outlook calendar events, such as scheduled meetings, planned trips, daily activities, etc. Users are required to provide the subject, description, location, start and end time of the event. The time provided by the user needs to be converted into the format of 'year-month-dayThour:minute:second', for example, 2024-10-12T08:30:00, Please do not omit the separator 'T' between the date and time.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "The event subject"
+          },
+          "description": {
+            "type": "string",
+            "description": "The event description"
+          },
+          "location": {
+            "type": "string",
+            "description": "The event location e.g. West District, NewYork City"
+          },
+          "start_time": {
+            "type": "string",
+            "description": "The event start time e.g. 2024-08-10T10:00:00"
+          },
+          "end_time": {
+            "type": "string",
+            "description": "The event end time e.g. 2024-08-10T15:30:00"
+          },
+          "attendees": {
+            "type": "array",
+            "description": "The attendees of the calendar event can be obtained from the user's contact list",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The attendee's name"
+                },
+                "email": {
+                  "type": "string",
+                  "description": "The attendee's email address."
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "subject",
+          "description",
+          "location",
+          "start_time",
+          "end_time",
+          "attendees"
+        ]
+      }
+    }, async ({ subject, description, location, start_time, end_time, attendees}: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('create_outlook_calendar_event', { subject, description, location, start_time, end_time, attendees});
+    });
+    client.addTool({
+      "name": "update_outlook_calendar_event",
+      "description": "Updates the properties of the event object. Users should provide the new subject, description, location, start or end time of the event. The time provided by the user needs to be converted into the format of 'year-month-dayThour:minute:second', for example, 2024-10-12T08:30:00, Please do not omit the separator 'T' between the date and time.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The event id"
+          },
+          "subject": {
+            "type": "string",
+            "description": "The event subject"
+          },
+          "description": {
+            "type": "string",
+            "description": "The event description"
+          },
+          "location": {
+            "type": "string",
+            "description": "The event location e.g. West District, NewYork City"
+          },
+          "start_time": {
+            "type": "string",
+            "description": "The event start time e.g. 2024-08-10T10:00:00"
+          },
+          "end_time": {
+            "type": "string",
+            "description": "The event end time e.g. 2024-08-10T15:30:00"
+          },
+          "attendees": {
+            "type": "array",
+            "description": "The attendees of the calendar event can be obtained from the user's contact list",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The attendee's name"
+                },
+                "email": {
+                  "type": "string",
+                  "description": "The attendee's email address."
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "event_id"
+        ]
+      }
+    }, async ({ event_id, subject = '', description = '', location = '', start_time = '', end_time = '', attendees = ''}: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('update_outlook_calendar_event', { event_id, subject, description, location, start_time, end_time, attendees});
+    });
+    client.addTool({
+        "name": "delete_outlook_calendar_event",
+        "description": "Delete the event object.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "event_id": {
+              "type": "string",
+              "description": "The event id"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "event_id"
+          ]
         }
-      );
-      return await result.json();
+      }
+      , async ({ event_id}: {
+      [key: string]: any
+    }) => {
+      return await fetchToolsOutput('delete_outlook_calendar_event', { event_id});
     });
 
     // handle realtime events from client + server for event logging
@@ -574,27 +1088,29 @@ export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
               {!items.length && `awaiting connection...`}
               {items.map((conversationItem, i) => {
                 return (
-                  <div className='row mb-3 gx-3 align-items-top row-message' key={conversationItem.id} role={conversationItem.role ?? 'function'}>
+                  <div className='row mb-3 gx-3 align-items-top row-message' key={conversationItem.id}
+                       role={conversationItem.role ?? 'function'}>
                     <div
                       className='col-md-1 col-xs-12 text-md-center d-flex d-sm-block justify-content-between justify-content-sm-center align-items-center align-items-sm-start'>
-                      {conversationItem.role == 'user' ? <i className='bi bi-person fs-3 fw-bold' style={{color:'#0099ff'}}></i> :
-                        <i className='bi bi-robot fs-3 fw-bold' style={{color:'#009900'}}></i>}
+                      {conversationItem.role == 'user' ?
+                        <i className='bi bi-person fs-3 fw-bold' style={{ color: '#0099ff' }}></i> :
+                        <i className='bi bi-robot fs-3 fw-bold' style={{ color: '#009900' }}></i>}
                     </div>
                     <div className='col p-3 bg-light markdown-content rounded'>
                       {/* tool response */}
                       {conversationItem.type === 'function_call_output' && (
-                        <p>{conversationItem.formatted.output}</p>
+                        <p className={'text-break'}>{conversationItem.formatted.output}</p>
                       )}
                       {/* tool call */}
                       {!!conversationItem.formatted.tool && (
-                        <p>
+                        <p className={'text-break lh-base'}>
                           {conversationItem.formatted.tool.name}(
                           {conversationItem.formatted.tool.arguments})
                         </p>
                       )}
                       {!conversationItem.formatted.tool &&
                         conversationItem.role === 'user' && (
-                          <p>
+                          <p className={'text-break lh-base'}>
                             {conversationItem.formatted.transcript ||
                               (conversationItem.formatted.audio?.length
                                 ? '(awaiting transcript)'
@@ -604,10 +1120,10 @@ export function ConsolePage(props: { username?: string; logoutUrl?: string; }) {
                         )}
                       {!conversationItem.formatted.tool &&
                         conversationItem.role === 'assistant' && (
-                          <p>
-                            {conversationItem.formatted.transcript ||
+                          <p className={'text-break lh-base'}>
+                            <Markdown>{conversationItem.formatted.transcript ||
                               conversationItem.formatted.text ||
-                              '(truncated)'}
+                              '(truncated)'}</Markdown>
                           </p>
                         )}
                       {conversationItem.formatted.file && (
