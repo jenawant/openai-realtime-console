@@ -126,6 +126,7 @@ export function ConsolePage(props: {
     [key: string]: boolean;
   }>({});
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [canPushToTalk, setCanPushToTalk] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -180,7 +181,7 @@ export function ConsolePage(props: {
 
     // Set state variables
     startTimeRef.current = new Date().toISOString();
-    setIsConnected(true);
+    setIsConnecting(true);
     setRealtimeEvents([]);
     setItems(client.conversation.getItems());
 
@@ -191,20 +192,27 @@ export function ConsolePage(props: {
     await wavStreamPlayer.connect();
 
     // Connect to realtime API
-    await client.connect();
-    if (client.conversation.getItems().length == 0) {
-      client.sendUserMessageContent([
-        {
-          type: `input_text`,
-          text: `Hello!`
-          // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
-        }
-      ]);
-    }
+    await client.connect().then(async () => {
+      setIsConnected(true);
+      setIsConnecting(false);
+      if (client.conversation.getItems().length == 0) {
+        client.sendUserMessageContent([
+          {
+            type: `input_text`,
+            text: `Hello!`
+            // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
+          }
+        ]);
+      }
+      if (client.getTurnDetectionType() === 'server_vad') {
+        await wavRecorder.record((data) => client.appendInputAudio(data.mono));
+      }
+    }).catch((reason) => {
+      setIsConnecting(false);
+      disconnectConversation()
+      console.error(reason);
+    });
 
-    if (client.getTurnDetectionType() === 'server_vad') {
-      await wavRecorder.record((data) => client.appendInputAudio(data.mono));
-    }
   }, []);
 
   /**
@@ -212,8 +220,8 @@ export function ConsolePage(props: {
    */
   const disconnectConversation = useCallback(async () => {
     setIsConnected(false);
-    // setRealtimeEvents([]);
-    // setItems([]);
+    setRealtimeEvents([]);
+    setItems([]);
 
     const client = clientRef.current;
     client.disconnect();
@@ -795,164 +803,164 @@ export function ConsolePage(props: {
       return await fetchToolsOutput('create_microsoft_authorization_url');
     });
     client.addTool({
-      "name": "get_outlook_calendar_events",
-      "description": "Get a list of event objects in the user's mailbox. The list contains single instance meetings and series masters.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "number_of_month": {
-            "type": "integer",
-            "description": "The number of months to query. For example, 'next two months' represents a number of 2. The default value is 1"
+      'name': 'get_outlook_calendar_events',
+      'description': 'Get a list of event objects in the user\'s mailbox. The list contains single instance meetings and series masters.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'number_of_month': {
+            'type': 'integer',
+            'description': 'The number of months to query. For example, \'next two months\' represents a number of 2. The default value is 1'
           }
         },
-        "additionalProperties": false,
-        "required": [
-          "number_of_month"
+        'additionalProperties': false,
+        'required': [
+          'number_of_month'
         ]
       }
-    }, async ({ number_of_month = 3}: {
+    }, async ({ number_of_month = 3 }: {
       [key: string]: any
     }) => {
-      return await fetchToolsOutput('get_outlook_calendar_events', {number_of_month});
+      return await fetchToolsOutput('get_outlook_calendar_events', { number_of_month });
     });
     client.addTool({
-      "name": "create_outlook_calendar_event",
-      "description": "Create Outlook calendar events, such as scheduled meetings, planned trips, daily activities, etc. Users are required to provide the subject, description, location, start and end time of the event. The time provided by the user needs to be converted into the format of 'year-month-dayThour:minute:second', for example, 2024-10-12T08:30:00, Please do not omit the separator 'T' between the date and time.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "subject": {
-            "type": "string",
-            "description": "The event subject"
+      'name': 'create_outlook_calendar_event',
+      'description': 'Create Outlook calendar events, such as scheduled meetings, planned trips, daily activities, etc. Users are required to provide the subject, description, location, start and end time of the event. The time provided by the user needs to be converted into the format of \'year-month-dayThour:minute:second\', for example, 2024-10-12T08:30:00, Please do not omit the separator \'T\' between the date and time.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'subject': {
+            'type': 'string',
+            'description': 'The event subject'
           },
-          "description": {
-            "type": "string",
-            "description": "The event description"
+          'description': {
+            'type': 'string',
+            'description': 'The event description'
           },
-          "location": {
-            "type": "string",
-            "description": "The event location e.g. West District, NewYork City"
+          'location': {
+            'type': 'string',
+            'description': 'The event location e.g. West District, NewYork City'
           },
-          "start_time": {
-            "type": "string",
-            "description": "The event start time e.g. 2024-08-10T10:00:00"
+          'start_time': {
+            'type': 'string',
+            'description': 'The event start time e.g. 2024-08-10T10:00:00'
           },
-          "end_time": {
-            "type": "string",
-            "description": "The event end time e.g. 2024-08-10T15:30:00"
+          'end_time': {
+            'type': 'string',
+            'description': 'The event end time e.g. 2024-08-10T15:30:00'
           },
-          "attendees": {
-            "type": "array",
-            "description": "The attendees of the calendar event can be obtained from the user's contact list",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "The attendee's name"
+          'attendees': {
+            'type': 'array',
+            'description': 'The attendees of the calendar event can be obtained from the user\'s contact list',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'name': {
+                  'type': 'string',
+                  'description': 'The attendee\'s name'
                 },
-                "email": {
-                  "type": "string",
-                  "description": "The attendee's email address."
+                'email': {
+                  'type': 'string',
+                  'description': 'The attendee\'s email address.'
                 }
               }
             }
           }
         },
-        "additionalProperties": false,
-        "required": [
-          "subject",
-          "description",
-          "location",
-          "start_time",
-          "end_time",
-          "attendees"
+        'additionalProperties': false,
+        'required': [
+          'subject',
+          'description',
+          'location',
+          'start_time',
+          'end_time',
+          'attendees'
         ]
       }
-    }, async ({ subject, description, location, start_time, end_time, attendees}: {
+    }, async ({ subject, description, location, start_time, end_time, attendees }: {
       [key: string]: any
     }) => {
-      return await fetchToolsOutput('create_outlook_calendar_event', { subject, description, location, start_time, end_time, attendees});
+      return await fetchToolsOutput('create_outlook_calendar_event', { subject, description, location, start_time, end_time, attendees });
     });
     client.addTool({
-      "name": "update_outlook_calendar_event",
-      "description": "Updates the properties of the event object. Users should provide the new subject, description, location, start or end time of the event. The time provided by the user needs to be converted into the format of 'year-month-dayThour:minute:second', for example, 2024-10-12T08:30:00, Please do not omit the separator 'T' between the date and time.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "event_id": {
-            "type": "string",
-            "description": "The event id"
+      'name': 'update_outlook_calendar_event',
+      'description': 'Updates the properties of the event object. Users should provide the new subject, description, location, start or end time of the event. The time provided by the user needs to be converted into the format of \'year-month-dayThour:minute:second\', for example, 2024-10-12T08:30:00, Please do not omit the separator \'T\' between the date and time.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'event_id': {
+            'type': 'string',
+            'description': 'The event id'
           },
-          "subject": {
-            "type": "string",
-            "description": "The event subject"
+          'subject': {
+            'type': 'string',
+            'description': 'The event subject'
           },
-          "description": {
-            "type": "string",
-            "description": "The event description"
+          'description': {
+            'type': 'string',
+            'description': 'The event description'
           },
-          "location": {
-            "type": "string",
-            "description": "The event location e.g. West District, NewYork City"
+          'location': {
+            'type': 'string',
+            'description': 'The event location e.g. West District, NewYork City'
           },
-          "start_time": {
-            "type": "string",
-            "description": "The event start time e.g. 2024-08-10T10:00:00"
+          'start_time': {
+            'type': 'string',
+            'description': 'The event start time e.g. 2024-08-10T10:00:00'
           },
-          "end_time": {
-            "type": "string",
-            "description": "The event end time e.g. 2024-08-10T15:30:00"
+          'end_time': {
+            'type': 'string',
+            'description': 'The event end time e.g. 2024-08-10T15:30:00'
           },
-          "attendees": {
-            "type": "array",
-            "description": "The attendees of the calendar event can be obtained from the user's contact list",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "The attendee's name"
+          'attendees': {
+            'type': 'array',
+            'description': 'The attendees of the calendar event can be obtained from the user\'s contact list',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'name': {
+                  'type': 'string',
+                  'description': 'The attendee\'s name'
                 },
-                "email": {
-                  "type": "string",
-                  "description": "The attendee's email address."
+                'email': {
+                  'type': 'string',
+                  'description': 'The attendee\'s email address.'
                 }
               }
             }
           }
         },
-        "required": [
-          "event_id"
+        'required': [
+          'event_id'
         ]
       }
-    }, async ({ event_id, subject = '', description = '', location = '', start_time = '', end_time = '', attendees = ''}: {
+    }, async ({ event_id, subject = '', description = '', location = '', start_time = '', end_time = '', attendees = '' }: {
       [key: string]: any
     }) => {
-      return await fetchToolsOutput('update_outlook_calendar_event', { event_id, subject, description, location, start_time, end_time, attendees});
+      return await fetchToolsOutput('update_outlook_calendar_event', { event_id, subject, description, location, start_time, end_time, attendees });
     });
     client.addTool({
-        "name": "delete_outlook_calendar_event",
-        "description": "Delete the event object.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "event_id": {
-              "type": "string",
-              "description": "The event id"
+        'name': 'delete_outlook_calendar_event',
+        'description': 'Delete the event object.',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'event_id': {
+              'type': 'string',
+              'description': 'The event id'
             }
           },
-          "additionalProperties": false,
-          "required": [
-            "event_id"
+          'additionalProperties': false,
+          'required': [
+            'event_id'
           ]
         }
       }
-      , async ({ event_id}: {
-      [key: string]: any
-    }) => {
-      return await fetchToolsOutput('delete_outlook_calendar_event', { event_id});
-    });
+      , async ({ event_id }: {
+        [key: string]: any
+      }) => {
+        return await fetchToolsOutput('delete_outlook_calendar_event', { event_id });
+      });
 
     // handle realtime events from client + server for event logging
     client.on('realtime.event', (realtimeEvent: RealtimeEvent) => {
@@ -1019,7 +1027,7 @@ export function ConsolePage(props: {
 
             <div className='content-block-title'>events</div>
             <div className='content-block-body' ref={eventsScrollRef}>
-              {!realtimeEvents.length && `awaiting connection...`}
+              {!realtimeEvents.length && `awaiting start connection...`}
               {realtimeEvents.map((realtimeEvent, i) => {
                 const count = realtimeEvent.count;
                 const event = { ...realtimeEvent.event };
@@ -1085,7 +1093,7 @@ export function ConsolePage(props: {
           <div className='content-block conversation'>
             <div className='content-block-title'>conversation</div>
             <div className='content-block-body' data-conversation-content>
-              {!items.length && `awaiting connection...`}
+              {!isConnected && `awaiting start connection...`}
               {items.map((conversationItem, i) => {
                 return (
                   <div className='row mb-3 gx-3 align-items-top row-message' key={conversationItem.id}
@@ -1099,32 +1107,32 @@ export function ConsolePage(props: {
                     <div className='col p-3 bg-light markdown-content rounded'>
                       {/* tool response */}
                       {conversationItem.type === 'function_call_output' && (
-                        <p className={'text-break'}>{conversationItem.formatted.output}</p>
+                        <div className={'text-break'}>{conversationItem.formatted.output}</div>
                       )}
                       {/* tool call */}
                       {!!conversationItem.formatted.tool && (
-                        <p className={'text-break lh-base'}>
+                        <div className={'text-break lh-base'}>
                           {conversationItem.formatted.tool.name}(
                           {conversationItem.formatted.tool.arguments})
-                        </p>
+                        </div>
                       )}
                       {!conversationItem.formatted.tool &&
                         conversationItem.role === 'user' && (
-                          <p className={'text-break lh-base'}>
+                          <div className={'text-break lh-base'}>
                             {conversationItem.formatted.transcript ||
                               (conversationItem.formatted.audio?.length
                                 ? '(awaiting transcript)'
                                 : conversationItem.formatted.text ||
                                 '(item sent)')}
-                          </p>
+                          </div>
                         )}
                       {!conversationItem.formatted.tool &&
                         conversationItem.role === 'assistant' && (
-                          <p className={'text-break lh-base'}>
+                          <div className={'text-break lh-base'}>
                             <Markdown>{conversationItem.formatted.transcript ||
                               conversationItem.formatted.text ||
                               '(truncated)'}</Markdown>
-                          </p>
+                          </div>
                         )}
                       {conversationItem.formatted.file && (
                         <audio
@@ -1138,7 +1146,7 @@ export function ConsolePage(props: {
               })}
             </div>
           </div>
-          <div className='content-actions'>
+          <div className='content-actions user-select-none'>
             <div className='visualization'>
               <div className='visualization-entry client'>
                 <canvas ref={clientCanvasRef} />
@@ -1147,35 +1155,42 @@ export function ConsolePage(props: {
                 <canvas ref={serverCanvasRef} />
               </div>
             </div>
-            <Toggle
-              defaultValue={false}
-              labels={[<Mic />, <Activity />]}
-              values={['none', 'server_vad']}
-              tips={['Manual', 'Automatic']}
-              onChange={(_, value) => changeTurnEndType(value)}
-            />
-            <div className='spacer' />
-            {isConnected && canPushToTalk && (
-              <Button
-                title={isRecording ? 'release to send' : 'push to talk'}
-                label={<Mic />}
-                buttonStyle={isRecording ? 'alert' : 'regular'}
-                disabled={!isConnected || !canPushToTalk}
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onTouchStart={startRecording}
-                onTouchEnd={stopRecording}
-              />
-            )}
-            <div className='spacer' />
+            {
+              isConnected && <>
+                <Toggle
+                  defaultValue={false}
+                  labels={[<Mic />, <Activity />]}
+                  values={['none', 'server_vad']}
+                  tips={['Manual', 'Automatic']}
+                  onChange={(_, value) => changeTurnEndType(value)}
+                />
+                <div className='spacer' />
+                {canPushToTalk && (
+                  <Button
+                    title={isRecording ? 'release to send' : 'push to talk'}
+                    label={<Mic />}
+                    buttonStyle={isRecording ? 'alert' : 'regular'}
+                    disabled={!isConnected || !canPushToTalk}
+                    onMouseDown={startRecording}
+                    onMouseUp={stopRecording}
+                    onTouchStart={startRecording}
+                    onTouchEnd={stopRecording}
+                  />
+                )}
+                <div className='spacer' />
+              </>
+            }
             <Button
-              label={isConnected ? 'stop' : 'start'}
-              iconPosition={isConnected ? 'start' : 'start'}
-              icon={isConnected ? ZapOff : Zap}
+              label={isConnecting ? <><span className='spinner-border spinner-border-sm text-danger' role='status'
+                                            aria-hidden='true'></span> Connecting...</> : (isConnected ? 'stop' : 'start')}
+              iconPosition={isConnecting ? undefined : (isConnected ? 'start' : 'start')}
+              icon={isConnecting ? undefined : (isConnected ? ZapOff : Zap)}
               buttonStyle={isConnected ? 'regular' : 'action'}
               onClick={
                 isConnected ? disconnectConversation : connectConversation
               }
+              extraClass={!isConnected ? 'w-100 justify-content-center' : undefined}
+              disabled={isConnecting}
             />
           </div>
         </div>

@@ -10,6 +10,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   iconColor?: 'red' | 'green' | 'grey';
   iconFill?: boolean;
   buttonStyle?: 'regular' | 'action' | 'alert' | 'flush';
+  extraClass?: string;
 }
 
 export function Button({
@@ -19,6 +20,7 @@ export function Button({
                          iconColor = void 0,
                          iconFill = false,
                          buttonStyle = 'regular',
+                         extraClass = '',
                          ...rest
                        }: ButtonProps) {
   const StartIcon = iconPosition === 'start' ? icon : null;
@@ -33,7 +35,7 @@ export function Button({
   classList.push(`button-style-${buttonStyle}`);
 
   return (
-    <button data-component='Button' className={classList.join(' ')} {...rest}>
+    <button data-component='Button' className={[...classList, extraClass].join(' ')} {...rest}>
       {StartIcon && (
         <span className='icon icon-start'>
           <StartIcon />
